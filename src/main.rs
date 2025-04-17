@@ -181,7 +181,8 @@ async fn perform_whois_lookup(ip: &str) -> SqliteResult<()> {
     for line in reader.lines() {
         if let Ok(line) = line {
             if !found_marker {
-                if line.contains("% Information related to") {
+                if line.contains("% Information related to") || line.contains("# start")
+                    || line.contains("NetRange:") || line.contains("ENGLISH") {
                     found_marker = true;
                     whois_info.push_str(&line);
                     whois_info.push('\n');
@@ -331,7 +332,7 @@ fn generate_html_response(ip_list: &[IpInfo]) -> HttpResponse {
         </head>
         <body>
             <div class='container'>
-                <h1>UFW Log IP Addresses</h1>
+                <h1>UFW Log IP Addresses who tried get into this machine</h1>
                 <p>Total unique IPs found: ".to_string() + &ip_list.len().to_string() + "</p>
                 <table>
                     <tr>
@@ -348,14 +349,14 @@ fn generate_html_response(ip_list: &[IpInfo]) -> HttpResponse {
         html += &format!(
             "<tr>
                 <td>{}</td>
-                <td>{}</td>
+                <td><a href=https://www.speedguide.net/port.php?port={}>{}</a></td>
                 <td>{}</td>
                 <td>{}</td>
                 <td>{}</td>
                 <td><div class='whois'>{}</div></td>
             </tr>",
             ip_info.ip,
-            ip_info.dest_port,
+            ip_info.dest_port, ip_info.dest_port,
             ip_info.first_seen,
             ip_info.last_seen,
             ip_info.whois_updated.as_deref().unwrap_or("Not updated"),
