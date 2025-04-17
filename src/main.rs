@@ -193,26 +193,29 @@ async fn perform_whois_lookup(ip: &str) -> SqliteResult<()> {
         }
     }
 
-    let now = Utc::now().naive_utc();
-    // Get a fresh connection
-    let conn = DB_POOL.get_connection()?;
+    // update only if whois not empty
+    if !whois_info.is_empty() {
+        // Try to update existing record first
+        let now = Utc::now().naive_utc();
+        // Get a fresh connection
+        let conn = DB_POOL.get_connection()?;
 
-    // Try to update existing record first
-    let updated = conn.execute(
-        "UPDATE whois_data SET whois_info = ?1, updated_at = ?2 WHERE ip = ?3",
-        params![whois_info, now, ip],
-    )?;
-
-    // If no records were updated, insert a new record
-    if updated == 0 {
-        conn.execute(
-            "INSERT INTO whois_data (ip, whois_info, updated_at) VALUES (?1, ?2, ?3)",
-            params![ip, whois_info, now],
+        let updated = conn.execute(
+            "UPDATE whois_data SET whois_info = ?1, updated_at = ?2 WHERE ip = ?3",
+            params![whois_info, now, ip],
         )?;
-    }
 
-    // Invalidate cache after updating whois data
-    APP_CACHE.ip_info_cache.invalidate_all();
+        // If no records were updated, insert a new record
+        if updated == 0 {
+            conn.execute(
+                "INSERT INTO whois_data (ip, whois_info, updated_at) VALUES (?1, ?2, ?3)",
+                params![ip, whois_info, now],
+            )?;
+        }
+
+        // Invalidate cache after updating whois data
+        APP_CACHE.ip_info_cache.invalidate_all();
+    }
 
     Ok(())
 }
@@ -231,6 +234,7 @@ async fn process_whois_lookups() -> SqliteResult<()> {
              LEFT JOIN whois_data ON ip_logs.ip = whois_data.ip
              WHERE whois_data.ip IS NULL
              OR whois_data.whois_info IS NULL
+             OR whois_data.whois_info  = ''
              OR (julianday('now') - julianday(whois_data.updated_at)) > 1"
         )?;
 
