@@ -332,7 +332,7 @@ fn generate_html_response(ip_list: &[IpInfo]) -> HttpResponse {
         </head>
         <body>
             <div class='container'>
-                <h1>UFW Log IP Addresses who tried get into this machine</h1>
+                <h1>UFW Log IP Addresses</h1>
                 <p>Total unique IPs found: ".to_string() + &ip_list.len().to_string() + "</p>
                 <table>
                     <tr>
