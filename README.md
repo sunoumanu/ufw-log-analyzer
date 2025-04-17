@@ -1,5 +1,7 @@
 # ufw-log-analyzer
-Show who is trying to get into your machine. Demo site [HTTP service](http://85.198.110.146:8080).
+Show who is trying to get into your machine. Demo site [HTTP service](http://85.198.110.146:8080)
+
+Feel free to add email send to abuse 😄
 
 Requirements: Linux machine with UFW enabled
 
