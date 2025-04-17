@@ -53,4 +53,9 @@ sudo usermod -a -G systemd-journal ufwlogger
 chown -R ufwlogger:ufwlogger /opt/ufwlogger
 ```
 
-
+Enable systemd:
+```
+systemctl daemon-reload
+systemctl enable ufw-log-analyzer.service
+systemctl restart ufw-log-analyzer.service
+```
