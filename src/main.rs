@@ -277,7 +277,7 @@ async fn index() -> impl Responder {
             strftime('%Y-%m-%d %H:%M:%S', ip_logs.first_seen),
             strftime('%Y-%m-%d %H:%M:%S', ip_logs.last_seen),
             whois_data.whois_info,
-            strftime('%Y-%m-%d %H:%M:%S', whois_data.updated_at) 
+            strftime('%Y-%m-%d %H:%M:%S', whois_data.updated_at)
          FROM ip_logs
          LEFT JOIN whois_data ON ip_logs.ip = whois_data.ip
          ORDER BY ip_logs.last_seen DESC"
