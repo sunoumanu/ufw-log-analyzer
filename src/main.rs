@@ -6,6 +6,7 @@ use regex::Regex;
 use rusqlite::{params, Connection, Result as SqliteResult};
 use serde::{Deserialize, Serialize};
 use std::io::{BufRead, BufReader};
+use std::process;
 use std::process::{Command, Stdio};
 use std::time::Duration;
 use tokio::time;
@@ -109,12 +110,23 @@ fn extract_ip_from_log(log_line: &str) -> Option<(String, String)> {
 async fn process_ufw_logs() -> SqliteResult<()> {
     println!("Processing UFW logs...");
 
-    let output = Command::new("journalctl")
+    let mut child = std::process::Command::new("journalctl")
         .args(&["--no-pager", "-n", "1000"])
-        .output()
+        .stdout(std::process::Stdio::piped())
+        .stderr(std::process::Stdio::piped())
+        .spawn()
         .expect("Failed to execute journalctl command");
 
+    let output = child.wait_with_output()
+        .expect("Failed to wait for journalctl command");
+
+    if !output.status.success() {
+        eprintln!("journalctl command failed: {}",
+                  String::from_utf8_lossy(&output.stderr));
+    }
+
     let log_lines = String::from_utf8_lossy(&output.stdout);
+
     let now = Utc::now().naive_utc();
 
     let conn = DB_POOL.get_connection()?;
@@ -151,14 +163,17 @@ async fn process_ufw_logs() -> SqliteResult<()> {
 async fn perform_whois_lookup(ip: &str) -> SqliteResult<()> {
     println!("Performing whois lookup for IP: {}", ip);
 
-    let output = Command::new("whois")
+    let mut child = std::process::Command::new("whois")
         .arg(ip)
         .stdout(Stdio::piped())
         .spawn()
         .expect("Failed to execute whois command");
 
-    let stdout = output.stdout.expect("Failed to capture stdout");
+    let stdout = child.stdout.take().expect("Failed to capture stdout");
     let reader = BufReader::new(stdout);
+
+    // Wait for the child process to complete
+    child.wait().expect("Failed to wait for child process");
 
     let mut found_marker = false;
 
@@ -214,8 +229,9 @@ async fn process_whois_lookups() -> SqliteResult<()> {
         let mut stmt = conn.prepare(
             "SELECT ip_logs.ip FROM ip_logs
              LEFT JOIN whois_data ON ip_logs.ip = whois_data.ip
-             WHERE whois_data.ip IS NULL OR
-             (julianday('now') - julianday(whois_data.updated_at)) > 1"
+             WHERE whois_data.ip IS NULL
+             OR whois_data.whois_info IS NULL
+             OR (julianday('now') - julianday(whois_data.updated_at)) > 1"
         )?;
 
         let ip_rows = stmt.query_map([], |row| {
