@@ -248,7 +248,7 @@ async fn process_whois_lookups() -> SqliteResult<()> {
     for ip in ips_to_update {
         perform_whois_lookup(&ip).await?;
         // Add a small delay to avoid overwhelming the whois server
-        time::sleep(Duration::from_millis(500)).await;
+        time::sleep(Duration::from_millis(5000)).await;
     }
 
     Ok(())
