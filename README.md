@@ -8,7 +8,7 @@ Build release:
 cargo build --release --verbose --jobs 4
 ```
 
-Sample systemd for Ubuntu:
+Sample systemd for Debian:
 ```
 [Unit]
 Description=UFW Log Analyzer Service
