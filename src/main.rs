@@ -1,5 +1,7 @@
 // main.rs
 use actix_web::{get, App, HttpResponse, HttpServer, Responder};
+use actix_web::middleware::Compress;
+use actix_web::web::Bytes;
 use chrono::{NaiveDateTime, Utc};
 use once_cell::sync::Lazy;
 use regex::Regex;
@@ -16,13 +18,17 @@ use std::sync::Arc;
 // First, modify the AppCache structure to explicitly use Vec<IpInfo>
 struct AppCache {
     ip_info_cache: Cache<String, Vec<IpInfo>>,  // Changed to Vec<IpInfo>
+    page_cache: Cache<String, String>
 }
 
 impl AppCache {
     fn new() -> Self {
         Self {
             ip_info_cache: Cache::builder()
-                .time_to_live(Duration::from_secs(300))
+                .time_to_live(Duration::from_secs(603))
+                .build(),
+            page_cache: Cache::builder()
+                .time_to_live(Duration::from_secs(301))
                 .build(),
         }
     }
@@ -155,7 +161,8 @@ async fn process_ufw_logs() -> SqliteResult<()> {
 
     // Invalidate cache after processing new logs
     APP_CACHE.ip_info_cache.invalidate_all();
-
+    APP_CACHE.page_cache.invalidate_all();
+    
     Ok(())
 }
 
@@ -216,6 +223,7 @@ async fn perform_whois_lookup(ip: &str) -> SqliteResult<()> {
 
         // Invalidate cache after updating whois data
         APP_CACHE.ip_info_cache.invalidate_all();
+        APP_CACHE.page_cache.invalidate_all();
     }
 
     Ok(())
@@ -262,11 +270,14 @@ async fn process_whois_lookups() -> SqliteResult<()> {
 // Web handler for the main page
 #[get("/")]
 async fn index() -> impl Responder {
-    // Try to get data from cache first
-    if let Some(cached_data) = APP_CACHE.ip_info_cache.get("ip_list") {
-        return generate_html_response(cached_data.as_slice());
+    
+    // Try to get HTML from page cache, if found
+    if let Some(cached_html) = APP_CACHE.page_cache.get("main_page") {
+        return HttpResponse::Ok()
+            .content_type("text/html; charset=utf-8")
+            .body(cached_html);
     }
-
+    
     let conn = DB_POOL.get_connection().expect("Failed to get DB connection");
 
     // Get all IPs with their whois information
@@ -300,19 +311,24 @@ async fn index() -> impl Responder {
             whois_updated: whois_updated.map(|dt| dt.to_string()),
         })
     }).expect("Failed to execute query");
-
-
+    
+    // pull IPs from DB and store in cache
     let ip_list: Vec<IpInfo> = ip_rows.filter_map(Result::ok).collect();
-
-    // Store in cache
     APP_CACHE.ip_info_cache.insert("ip_list".to_string(), ip_list.clone()).await;
 
-    generate_html_response(&ip_list)
+    // generate HTML and store in PAGE cache
+    let html = generate_html_response(&ip_list);
+    APP_CACHE.page_cache.invalidate_all();
+    APP_CACHE.page_cache.insert("main_page".to_string(), html.clone()).await;
+    
+    // Return the HTML response
+    HttpResponse::Ok()
+        .content_type("text/html; charset=utf-8")
+        .body(html)
 }
 
-
 // Separate HTML generation function
-fn generate_html_response(ip_list: &[IpInfo]) -> HttpResponse {
+fn generate_html_response(ip_list: &[IpInfo]) -> String {
     // Generate HTML
     let mut html = String::from(
         "<!DOCTYPE html>
@@ -366,9 +382,7 @@ fn generate_html_response(ip_list: &[IpInfo]) -> HttpResponse {
 
     html += "</table></div></body></html>";
 
-    HttpResponse::Ok()
-        .content_type("text/html; charset=utf-8")
-        .body(html)
+    return html
 }
 
 // Schedule periodic tasks (log processing and whois lookups)
@@ -414,6 +428,7 @@ async fn main() -> std::io::Result<()> {
     println!("Starting HTTP server on http://0.0.0.0:8080");
     HttpServer::new(|| {
         App::new()
+            .wrap(Compress::default())
             .service(index)
     })
         .bind("0.0.0.0:8080")?
